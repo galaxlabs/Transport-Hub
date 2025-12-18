@@ -1,0 +1,206 @@
+import type { Vehicle, PopularRoute, Testimonial } from "@shared/schema";
+
+import camryImage from "@assets/generated_images/white_toyota_camry_sedan.png";
+import innovaImage from "@assets/generated_images/white_toyota_innova_mpv.png";
+import hiaceImage from "@assets/generated_images/white_toyota_hiace_van.png";
+import stariaImage from "@assets/generated_images/silver_hyundai_staria_mpv.png";
+import gmcImage from "@assets/generated_images/black_gmc_yukon_suv.png";
+import h1Image from "@assets/generated_images/white_hyundai_h1_van.png";
+
+export const vehicles: Vehicle[] = [
+  {
+    id: "camry",
+    name: "Toyota Camry",
+    category: "Saloon",
+    image: camryImage,
+    seats: 3,
+    checkedLuggage: 2,
+    cabinBags: 2,
+    description: "Comfortable sedan perfect for small groups and couples. Air-conditioned with premium interior.",
+    pricePerKm: 2.5,
+  },
+  {
+    id: "innova",
+    name: "Toyota Innova",
+    category: "MPV",
+    image: innovaImage,
+    seats: 5,
+    checkedLuggage: 4,
+    cabinBags: 4,
+    description: "Spacious MPV ideal for families. Ample legroom and luggage space for comfortable journeys.",
+    pricePerKm: 3.0,
+  },
+  {
+    id: "hiace",
+    name: "Toyota HiAce",
+    category: "Van",
+    image: hiaceImage,
+    seats: 10,
+    checkedLuggage: 8,
+    cabinBags: 10,
+    description: "Large capacity van for groups. Perfect for Umrah groups traveling together.",
+    pricePerKm: 4.5,
+  },
+  {
+    id: "staria",
+    name: "Hyundai Staria",
+    category: "Premium MPV",
+    image: stariaImage,
+    seats: 7,
+    checkedLuggage: 5,
+    cabinBags: 7,
+    description: "Luxury MPV with futuristic design. Premium comfort for discerning travelers.",
+    pricePerKm: 4.0,
+  },
+  {
+    id: "gmc",
+    name: "GMC Yukon XL",
+    category: "Luxury SUV",
+    image: gmcImage,
+    seats: 6,
+    checkedLuggage: 6,
+    cabinBags: 6,
+    description: "Premium luxury SUV for VIP transport. Ultimate comfort and prestige.",
+    pricePerKm: 6.0,
+  },
+  {
+    id: "h1",
+    name: "Hyundai H1",
+    category: "Van",
+    image: h1Image,
+    seats: 8,
+    checkedLuggage: 6,
+    cabinBags: 8,
+    description: "Versatile passenger van. Excellent choice for medium-sized groups.",
+    pricePerKm: 3.5,
+  },
+];
+
+export const popularRoutes: PopularRoute[] = [
+  {
+    id: "jeddah-makkah",
+    from: "Jeddah Airport",
+    to: "Makkah Hotel",
+    vehicleId: "camry",
+    vehicleName: "Toyota Camry",
+    vehicleImage: camryImage,
+    price: 150,
+    duration: "1h 15min",
+    distance: "85 km",
+  },
+  {
+    id: "makkah-madinah",
+    from: "Makkah",
+    to: "Madinah",
+    vehicleId: "innova",
+    vehicleName: "Toyota Innova",
+    vehicleImage: innovaImage,
+    price: 650,
+    duration: "4h 30min",
+    distance: "420 km",
+  },
+  {
+    id: "jeddah-madinah",
+    from: "Jeddah Airport",
+    to: "Madinah",
+    vehicleId: "hiace",
+    vehicleName: "Toyota HiAce",
+    vehicleImage: hiaceImage,
+    price: 850,
+    duration: "5h",
+    distance: "450 km",
+  },
+  {
+    id: "madinah-airport",
+    from: "Madinah Hotel",
+    to: "Madinah Airport",
+    vehicleId: "camry",
+    vehicleName: "Toyota Camry",
+    vehicleImage: camryImage,
+    price: 80,
+    duration: "30min",
+    distance: "25 km",
+  },
+  {
+    id: "makkah-jeddah",
+    from: "Makkah Hotel",
+    to: "Jeddah Airport",
+    vehicleId: "staria",
+    vehicleName: "Hyundai Staria",
+    vehicleImage: stariaImage,
+    price: 200,
+    duration: "1h 15min",
+    distance: "85 km",
+  },
+  {
+    id: "vip-tour",
+    from: "Makkah",
+    to: "Makkah Ziyarat",
+    vehicleId: "gmc",
+    vehicleName: "GMC Yukon XL",
+    vehicleImage: gmcImage,
+    price: 450,
+    duration: "4h",
+    distance: "50 km",
+  },
+];
+
+export const testimonials: Testimonial[] = [
+  {
+    id: "1",
+    name: "Ahmed Hassan",
+    rating: 5,
+    comment: "Exceptional service for our Umrah trip. The driver was professional, punctual, and the vehicle was spotlessly clean. Highly recommend for any pilgrim!",
+    label: "Verified Pilgrim",
+  },
+  {
+    id: "2",
+    name: "Fatima Al-Rashid",
+    rating: 5,
+    comment: "Best taxi service in Saudi Arabia. They picked us up from Jeddah Airport on time and made our journey to Makkah comfortable and peaceful.",
+    label: "Happy Customer",
+  },
+  {
+    id: "3",
+    name: "Mohammad Khan",
+    rating: 5,
+    comment: "Used their service for our family of 6 from Makkah to Madinah. The HiAce was spacious and comfortable. Driver knew all the best routes.",
+    label: "Family Traveler",
+  },
+  {
+    id: "4",
+    name: "Sarah Johnson",
+    rating: 5,
+    comment: "First time doing Umrah and was worried about transportation. These folks made everything so easy. Professional and caring service.",
+    label: "First-time Pilgrim",
+  },
+  {
+    id: "5",
+    name: "Abdullah Al-Farsi",
+    rating: 5,
+    comment: "Booked the GMC for VIP service. Worth every riyal! Luxury experience from start to finish. Will definitely use again.",
+    label: "VIP Customer",
+  },
+];
+
+export const locations = [
+  "Jeddah King Abdulaziz International Airport",
+  "Makkah - Haram Area",
+  "Makkah - Aziziyah",
+  "Makkah - Al Shisha",
+  "Madinah - Haram Area",
+  "Madinah - Al Tilal",
+  "Madinah Prince Mohammad Airport",
+  "Taif",
+  "Yanbu",
+];
+
+export const companyInfo = {
+  name: "Al-Haramain Transport",
+  phone: "+966-50-123-4567",
+  whatsapp: "+966501234567",
+  email: "info@alharamaintransport.com",
+  hours: "24/7 - Always Available",
+  rating: 4.8,
+  reviews: 2150,
+};
