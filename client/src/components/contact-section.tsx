@@ -93,7 +93,7 @@ export function ContactSection() {
                     <Input
                       id="contact-phone"
                       type="tel"
-                      placeholder="+966 50 123 4567"
+                      placeholder="+966 58 235 6295"
                       value={formData.phone}
                       onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                       required

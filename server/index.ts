@@ -1,7 +1,31 @@
+import fs from "node:fs";
+import path from "node:path";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+
+function loadEnvFromFile() {
+  const envPath = path.resolve(process.cwd(), ".env");
+  if (!fs.existsSync(envPath)) return;
+
+  const content = fs.readFileSync(envPath, "utf-8");
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    const eqIndex = trimmed.indexOf("=");
+    if (eqIndex === -1) continue;
+
+    const key = trimmed.slice(0, eqIndex).trim();
+    const value = trimmed.slice(eqIndex + 1).trim();
+    if (key && !(key in process.env)) {
+      process.env[key] = value;
+    }
+  }
+}
+
+loadEnvFromFile();
 
 const app = express();
 const httpServer = createServer(app);
@@ -16,8 +40,8 @@ app.use(
   express.json({
     verify: (req, _res, buf) => {
       req.rawBody = buf;
-    },
-  }),
+    }
+  })
 );
 
 app.use(express.urlencoded({ extended: false }));
@@ -27,27 +51,28 @@ export function log(message: string, source = "express") {
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
-    hour12: true,
+    hour12: true
   });
 
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
-app.use((req, res, next) => {
+// Request/response logging middleware
+app.use((req: Request, res: Response, next: NextFunction) => {
   const start = Date.now();
-  const path = req.path;
+  const reqPath = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
+  const originalResJson = res.json.bind(res);
+  res.json = function (bodyJson: any, ...args: any[]) {
     capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
+    return (originalResJson as any).apply(res, [bodyJson, ...args]);
+  } as typeof res.json;
 
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+    if (reqPath.startsWith("/api")) {
+      let logLine = `${req.method} ${reqPath} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
@@ -59,20 +84,21 @@ app.use((req, res, next) => {
   next();
 });
 
+// Register API routes
+registerRoutes(httpServer, app);
+
+// Error handler
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  const status = err.status || 500;
+  const message = err.message || "Internal Server Error";
+
+  res.status(status).json({ message });
+});
+
+// importantly only setup vite in development and after
+// setting up all the other routes so the catch-all route
+// doesn't interfere with the other routes
 (async () => {
-  await registerRoutes(httpServer, app);
-
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    res.status(status).json({ message });
-    throw err;
-  });
-
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
@@ -89,10 +115,10 @@ app.use((req, res, next) => {
     {
       port,
       host: "0.0.0.0",
-      reusePort: true,
+      reusePort: true
     },
     () => {
       log(`serving on port ${port}`);
-    },
+    }
   );
 })();

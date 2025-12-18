@@ -198,7 +198,7 @@ export const locations = [
 export const companyInfo = {
   name: "Al-Haramain Transport",
   phone: "+966-50-123-4567",
-  whatsapp: "+966501234567",
+  whatsapp: "+966582356295",
   email: "info@alharamaintransport.com",
   hours: "24/7 - Always Available",
   rating: 4.8,
