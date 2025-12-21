@@ -21,21 +21,15 @@ export function ContactSection() {
   });
 
   /**
-   * Submit the contact form. This handler first attempts to create a booking on
-   * our Frappe backend via a public API endpoint. If the API call succeeds,
-   * the returned booking reference is ignored but a success toast is shown.
-   * If the API call fails for any reason (for example the server is down or
-   * CORS is misconfigured), the handler falls back to opening WhatsApp with
-   * a pre‑composed message containing the form data. Regardless of the outcome
-   * the form is cleared and the submitting state is reset.
+   * Submit the contact form.
+   * 1) Try to create a Booking in Frappe (public API).
+   * 2) If it fails, fallback to opening WhatsApp with prefilled text.
    */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     trackEvent("contact_form_submit", "conversion", "contact_form");
 
-    // Compose a WhatsApp message for the fallback case. Note: encode the
-    // message so special characters (like newlines) are preserved.
     const whatsappMessage = encodeURIComponent(
       `New Contact Form Submission:\n\n` +
         `Name: ${formData.name}\n` +
@@ -44,58 +38,72 @@ export function ContactSection() {
         `Message: ${formData.message}`
     );
 
-    // Attempt to send the form data to the Frappe API. The API base URL
-    // comes from an environment variable (VITE_FRAPPE_URL). When building for
-    // Vercel you can set this variable in the dashboard. On failure we
-    // gracefully fall back to WhatsApp below.
+    // IMPORTANT:
+    // Set VITE_FRAPPE_URL in your env:
+    // - Local:  VITE_FRAPPE_URL="https://your-frappe-domain.com"
+    // - Vercel: add it in Project Settings -> Environment Variables
     const apiBase = import.meta.env.VITE_FRAPPE_URL as string | undefined;
+
+    // If you are serving Transport-Hub from inside the same Frappe site (/www),
+    // you can also hardcode apiEndpoint = "/api/method/..."
     const apiEndpoint = apiBase
       ? `${apiBase}/api/method/tms.transport_management_system.api.booking.create_booking`
-      : undefined;
+      : "/api/method/tms.transport_management_system.api.booking.create_booking";
+
     let bookingCreated = false;
-    if (apiEndpoint) {
-      try {
-        const res = await fetch(apiEndpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            customer_name: formData.name,
-            phone: formData.phone,
-            email: formData.email,
-            message: formData.message,
-            source: "Website",
-          }),
-        });
-        const data = await res.json();
-        // Frappe returns { message: { name: 'BOOK-XXXX' } } on success. If
-        // there's an exception the `exc` property is set.
-        if (res.ok && data && !data.exc) {
-          bookingCreated = true;
-        }
-      } catch (err) {
-        // silently ignore errors – we'll fall back to WhatsApp
+    let bookingName: string | undefined;
+
+    try {
+      const res = await fetch(apiEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+
+        // ✅ this avoids CSRF problems if cookies are present
+        // because the request will be treated as guest (no session cookie)
+        credentials: "omit",
+
+        body: JSON.stringify({
+          customer_name: formData.name,
+          phone: formData.phone,
+          email: formData.email,
+          message: formData.message,
+          source: "Website",
+        }),
+      });
+
+      const data = await res.json();
+
+      // Frappe typically returns: { message: { name: "BOOK-0001" } }
+      // If error: may return { exc: "...", _server_messages: "...", message: "..." }
+      if (res.ok && data && !data.exc) {
+        bookingCreated = true;
+        bookingName = data?.message?.name;
+      } else {
+        const errMsg =
+          data?.message ||
+          data?._server_messages ||
+          "Booking API returned an error";
+        throw new Error(typeof errMsg === "string" ? errMsg : "Booking API error");
       }
+    } catch (err) {
+      // silently fallback to WhatsApp below
     }
 
     if (bookingCreated) {
-      // Successful API call; show a toast and reset form.
       toast({
         title: "Message Sent!",
-        description: "Your booking has been received. We'll contact you soon.",
+        description: bookingName
+          ? `Your booking has been received: ${bookingName}. We'll contact you soon.`
+          : "Your booking has been received. We'll contact you soon.",
       });
     } else {
-      // Either the API is unreachable or returned an error; fall back to WhatsApp.
-      window.open(
-        `https://wa.me/${companyInfo.whatsapp}?text=${whatsappMessage}`,
-        "_blank",
-      );
+      window.open(`https://wa.me/${companyInfo.whatsapp}?text=${whatsappMessage}`, "_blank");
       toast({
         title: "Message Sent via WhatsApp!",
         description: "We've opened WhatsApp so you can complete your message.",
       });
     }
 
-    // Clear the form and reset submission state.
     setFormData({ name: "", email: "", phone: "", message: "" });
     setIsSubmitting(false);
   };
@@ -110,10 +118,10 @@ export function ContactSection() {
     <section id="contact" className="py-16 md:py-24 bg-background" data-testid="section-contact">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12 md:mb-16">
-          <Badge variant="secondary" className="mb-4" data-testid="badge-contact">Contact Us</Badge>
-          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-            Get in Touch
-          </h2>
+          <Badge variant="secondary" className="mb-4" data-testid="badge-contact">
+            Contact Us
+          </Badge>
+          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">Get in Touch</h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Have questions? Need a custom quote? We're here to help. Reach out to us anytime.
           </p>
@@ -123,6 +131,7 @@ export function ContactSection() {
           <Card className="shadow-lg">
             <CardContent className="p-6 md:p-8">
               <h3 className="text-xl font-bold text-foreground mb-6">Send us a Message</h3>
+
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div className="space-y-2">
                   <Label htmlFor="contact-name">Full Name</Label>
@@ -135,6 +144,7 @@ export function ContactSection() {
                     data-testid="input-contact-name"
                   />
                 </div>
+
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="contact-email">Email</Label>
@@ -148,6 +158,7 @@ export function ContactSection() {
                       data-testid="input-contact-email"
                     />
                   </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="contact-phone">Phone Number</Label>
                     <Input
@@ -161,6 +172,7 @@ export function ContactSection() {
                     />
                   </div>
                 </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="contact-message">Message</Label>
                   <Textarea
@@ -174,6 +186,7 @@ export function ContactSection() {
                     data-testid="input-contact-message"
                   />
                 </div>
+
                 <Button
                   type="submit"
                   className="w-full gap-2"
@@ -192,7 +205,7 @@ export function ContactSection() {
             <Card className="shadow-lg">
               <CardContent className="p-6 md:p-8 space-y-6">
                 <h3 className="text-xl font-bold text-foreground">Contact Information</h3>
-                
+
                 <div className="space-y-4">
                   <a
                     href={`tel:${companyInfo.phone}`}
@@ -204,7 +217,9 @@ export function ContactSection() {
                     </div>
                     <div>
                       <p className="font-semibold text-foreground">Phone</p>
-                      <p className="text-muted-foreground" data-testid="text-contact-phone">{companyInfo.phone}</p>
+                      <p className="text-muted-foreground" data-testid="text-contact-phone">
+                        {companyInfo.phone}
+                      </p>
                     </div>
                   </a>
 
@@ -218,7 +233,9 @@ export function ContactSection() {
                     </div>
                     <div>
                       <p className="font-semibold text-foreground">Email</p>
-                      <p className="text-muted-foreground" data-testid="text-contact-email">{companyInfo.email}</p>
+                      <p className="text-muted-foreground" data-testid="text-contact-email">
+                        {companyInfo.email}
+                      </p>
                     </div>
                   </a>
 
@@ -228,7 +245,9 @@ export function ContactSection() {
                     </div>
                     <div>
                       <p className="font-semibold text-foreground">Working Hours</p>
-                      <p className="text-muted-foreground" data-testid="text-contact-hours">{companyInfo.hours}</p>
+                      <p className="text-muted-foreground" data-testid="text-contact-hours">
+                        {companyInfo.hours}
+                      </p>
                     </div>
                   </div>
 
@@ -249,7 +268,7 @@ export function ContactSection() {
               <CardContent className="p-6 md:p-8 text-center space-y-4">
                 <div className="w-16 h-16 mx-auto rounded-full bg-green-100 dark:bg-green-900/50 flex items-center justify-center">
                   <svg className="w-8 h-8 text-green-600" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
                   </svg>
                 </div>
                 <h4 className="text-xl font-bold text-foreground">Prefer WhatsApp?</h4>
@@ -263,7 +282,7 @@ export function ContactSection() {
                   data-testid="button-contact-whatsapp"
                 >
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
                   </svg>
                   Chat on WhatsApp
                 </Button>
