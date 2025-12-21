@@ -20,22 +20,82 @@ export function ContactSection() {
     message: "",
   });
 
+  /**
+   * Submit the contact form. This handler first attempts to create a booking on
+   * our Frappe backend via a public API endpoint. If the API call succeeds,
+   * the returned booking reference is ignored but a success toast is shown.
+   * If the API call fails for any reason (for example the server is down or
+   * CORS is misconfigured), the handler falls back to opening WhatsApp with
+   * a pre‑composed message containing the form data. Regardless of the outcome
+   * the form is cleared and the submitting state is reset.
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     trackEvent("contact_form_submit", "conversion", "contact_form");
 
-    const message = encodeURIComponent(
-      `New Contact Form Submission:\n\nName: ${formData.name}\nEmail: ${formData.email}\nPhone: ${formData.phone}\nMessage: ${formData.message}`
+    // Compose a WhatsApp message for the fallback case. Note: encode the
+    // message so special characters (like newlines) are preserved.
+    const whatsappMessage = encodeURIComponent(
+      `New Contact Form Submission:\n\n` +
+        `Name: ${formData.name}\n` +
+        `Email: ${formData.email}\n` +
+        `Phone: ${formData.phone}\n` +
+        `Message: ${formData.message}`
     );
-    
-    window.open(`https://wa.me/${companyInfo.whatsapp}?text=${message}`, "_blank");
 
-    toast({
-      title: "Message Sent!",
-      description: "We'll get back to you as soon as possible.",
-    });
+    // Attempt to send the form data to the Frappe API. The API base URL
+    // comes from an environment variable (VITE_FRAPPE_URL). When building for
+    // Vercel you can set this variable in the dashboard. On failure we
+    // gracefully fall back to WhatsApp below.
+    const apiBase = import.meta.env.VITE_FRAPPE_URL as string | undefined;
+    const apiEndpoint = apiBase
+      ? `${apiBase}/api/method/tms.transport_management_system.api.booking.create_booking`
+      : undefined;
+    let bookingCreated = false;
+    if (apiEndpoint) {
+      try {
+        const res = await fetch(apiEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customer_name: formData.name,
+            phone: formData.phone,
+            email: formData.email,
+            message: formData.message,
+            source: "Website",
+          }),
+        });
+        const data = await res.json();
+        // Frappe returns { message: { name: 'BOOK-XXXX' } } on success. If
+        // there's an exception the `exc` property is set.
+        if (res.ok && data && !data.exc) {
+          bookingCreated = true;
+        }
+      } catch (err) {
+        // silently ignore errors – we'll fall back to WhatsApp
+      }
+    }
 
+    if (bookingCreated) {
+      // Successful API call; show a toast and reset form.
+      toast({
+        title: "Message Sent!",
+        description: "Your booking has been received. We'll contact you soon.",
+      });
+    } else {
+      // Either the API is unreachable or returned an error; fall back to WhatsApp.
+      window.open(
+        `https://wa.me/${companyInfo.whatsapp}?text=${whatsappMessage}`,
+        "_blank",
+      );
+      toast({
+        title: "Message Sent via WhatsApp!",
+        description: "We've opened WhatsApp so you can complete your message.",
+      });
+    }
+
+    // Clear the form and reset submission state.
     setFormData({ name: "", email: "", phone: "", message: "" });
     setIsSubmitting(false);
   };
