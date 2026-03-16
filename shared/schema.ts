@@ -64,6 +64,8 @@ export const contactFormSchema = z.object({
 });
 
 export interface QuoteFormData {
+  fullName: string;
+  mobileNo: string;
   pickupLocation: string;
   dropoffLocation: string;
   date: string;
@@ -74,6 +76,8 @@ export interface QuoteFormData {
 }
 
 export const quoteFormSchema = z.object({
+  fullName: z.string().min(2, "Please enter your full name"),
+  mobileNo: z.string().min(8, "Please enter a valid phone number"),
   pickupLocation: z.string().min(1, "Please select pickup location"),
   dropoffLocation: z.string().min(1, "Please select dropoff location"),
   date: z.string().min(1, "Please select a date"),
@@ -81,4 +85,18 @@ export const quoteFormSchema = z.object({
   passengers: z.number().min(1).max(14),
   returnTrip: z.boolean(),
   additionalStops: z.array(z.string()),
+});
+
+export interface SignupFormData {
+  full_name: string;
+  email: string;
+  mobile_no: string;
+  password: string;
+}
+
+export const signupFormSchema = z.object({
+  full_name: z.string().min(2, "Please enter your full name"),
+  email: z.string().email("Please enter a valid email"),
+  mobile_no: z.string().min(8, "Please enter a valid mobile number"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
 });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,9 +8,16 @@ import { Switch } from "@/components/ui/switch";
 import { Calendar, Clock, MapPin, Users, Plus, Star, Shield, Headphones, X } from "lucide-react";
 import { locations, companyInfo } from "@/lib/data";
 import { trackEvent } from "@/lib/analytics";
+import { useToast } from "@/hooks/use-toast";
+import { createPublicTripBooking, getPublicBookingContext, getPublicMapsConfig, type PublicRouteOption } from "@/lib/tss";
 import heroImage from "@assets/generated_images/makkah_holy_mosque_hero.png";
 
 export function HeroSection() {
+  const { toast } = useToast();
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [mobileNo, setMobileNo] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [pickupLocation, setPickupLocation] = useState("");
   const [dropoffLocation, setDropoffLocation] = useState("");
   const [date, setDate] = useState("");
@@ -18,6 +25,118 @@ export function HeroSection() {
   const [passengers, setPassengers] = useState("2");
   const [returnTrip, setReturnTrip] = useState(false);
   const [additionalStops, setAdditionalStops] = useState<string[]>([]);
+  const [availableLocations, setAvailableLocations] = useState<string[]>(locations);
+  const [routeOptions, setRouteOptions] = useState<PublicRouteOption[]>([]);
+  const [baseCompany, setBaseCompany] = useState("");
+  const pickupInputRef = useRef<HTMLInputElement | null>(null);
+  const dropoffInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const syncCustomer = () => {
+      const stored = window.localStorage.getItem("transport_hub_customer");
+      if (!stored) {
+        return;
+      }
+      try {
+        const customer = JSON.parse(stored) as { full_name?: string; email?: string; mobile_no?: string };
+        if (customer.full_name) {
+          setFullName((prev) => prev || customer.full_name || "");
+        }
+        if (customer.email) {
+          setEmail((prev) => prev || customer.email || "");
+        }
+        if (customer.mobile_no) {
+          setMobileNo((prev) => prev || customer.mobile_no || "");
+        }
+      } catch {
+        // ignore broken local storage payload
+      }
+    };
+
+    syncCustomer();
+    window.addEventListener("transport-hub-customer-updated", syncCustomer);
+    return () => window.removeEventListener("transport-hub-customer-updated", syncCustomer);
+  }, []);
+
+  useEffect(() => {
+    getPublicBookingContext(import.meta.env.VITE_TSS_BASE_COMPANY as string | undefined)
+      .then((context) => {
+        setAvailableLocations(context.locations.length ? context.locations : locations);
+        setRouteOptions(context.routes || []);
+        setBaseCompany(context.base_company);
+      })
+      .catch(() => {
+        setAvailableLocations(locations);
+      });
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+
+    function bindAutocomplete(input: HTMLInputElement | null, setter: (value: string) => void) {
+      if (!input || !window.google?.maps?.places || (input as HTMLInputElement & { __placesBound?: boolean }).__placesBound) {
+        return;
+      }
+
+      const autocomplete = new window.google.maps.places.Autocomplete(input, {
+        fields: ["name", "formatted_address"],
+        componentRestrictions: { country: ["sa"] },
+      });
+      autocomplete.addListener("place_changed", () => {
+        const place = autocomplete.getPlace();
+        const value = (place?.name || place?.formatted_address || "").trim();
+        if (value) {
+          setter(value);
+        }
+      });
+      (input as HTMLInputElement & { __placesBound?: boolean }).__placesBound = true;
+    }
+
+    async function setupPlaces() {
+      try {
+        const config = await getPublicMapsConfig();
+        if (!config.enabled || !config.api_key || typeof window === "undefined") {
+          return;
+        }
+
+        if (!window.google?.maps?.places) {
+          await new Promise<void>((resolve, reject) => {
+            const existingScript = document.querySelector<HTMLScriptElement>("script[data-tss-google='1']");
+            if (existingScript) {
+              existingScript.addEventListener("load", () => resolve(), { once: true });
+              existingScript.addEventListener("error", () => reject(new Error("Google script failed")), { once: true });
+              return;
+            }
+
+            const script = document.createElement("script");
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${config.api_key}&libraries=places`;
+            script.async = true;
+            script.defer = true;
+            script.dataset.tssGoogle = "1";
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error("Google script failed"));
+            document.head.appendChild(script);
+          });
+        }
+
+        if (!disposed) {
+          bindAutocomplete(pickupInputRef.current, setPickupLocation);
+          bindAutocomplete(dropoffInputRef.current, setDropoffLocation);
+        }
+      } catch {
+        // fall back to local route/place suggestions
+      }
+    }
+
+    setupPlaces();
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   const handleAddStop = () => {
     if (additionalStops.length < 3) {
@@ -35,12 +154,71 @@ export function HeroSection() {
     setAdditionalStops(newStops);
   };
 
-  const handleGetQuote = () => {
+  const matchedRoute = routeOptions.find(
+    (route) => route.source === pickupLocation && route.destination === dropoffLocation,
+  );
+
+  const handleGetQuote = async () => {
     trackEvent("quote_request", "conversion", "hero_form");
+    if (!fullName || !mobileNo || !pickupLocation || !dropoffLocation || !date || !time) {
+      toast({
+        title: "Missing details",
+        description: "Please complete your name, phone, route, date, and time.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const booking = await createPublicTripBooking({
+        base_company: baseCompany || undefined,
+        route: matchedRoute?.name,
+        source: pickupLocation,
+        destination: dropoffLocation,
+        passenger_name: fullName,
+        email,
+        mobile_no: mobileNo,
+        seat_count: Number(passengers),
+        source_channel: "Website",
+        notes: [
+          `Travel Date: ${date}`,
+          `Travel Time: ${time}`,
+          `Return Trip: ${returnTrip ? "Yes" : "No"}`,
+          additionalStops.length ? `Additional Stops: ${additionalStops.filter(Boolean).join(", ")}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      });
+      toast({
+        title: "Booking received",
+        description: `Your request has been saved as ${booking.booking_code}.`,
+      });
+      setFullName("");
+      setEmail("");
+      setMobileNo("");
+      setPickupLocation("");
+      setDropoffLocation("");
+      setDate("");
+      setTime("");
+      setPassengers("2");
+      setReturnTrip(false);
+      setAdditionalStops([]);
+      return;
+    } catch {
+      // fall back to WhatsApp below
+    } finally {
+      setIsSubmitting(false);
+    }
+
     const message = encodeURIComponent(
-      `Hello! I need a quote for:\n\nPickup: ${pickupLocation}\nDropoff: ${dropoffLocation}\nDate: ${date}\nTime: ${time}\nPassengers: ${passengers}\nReturn Trip: ${returnTrip ? "Yes" : "No"}${additionalStops.length > 0 ? `\nAdditional Stops: ${additionalStops.join(", ")}` : ""}`
+      `Hello! I need a quote for:\n\nName: ${fullName}\nPhone: ${mobileNo}\nPickup: ${pickupLocation}\nDropoff: ${dropoffLocation}\nDate: ${date}\nTime: ${time}\nPassengers: ${passengers}\nReturn Trip: ${returnTrip ? "Yes" : "No"}${additionalStops.length > 0 ? `\nAdditional Stops: ${additionalStops.join(", ")}` : ""}`
     );
     window.open(`https://wa.me/${companyInfo.whatsapp}?text=${message}`, "_blank");
+    toast({
+      title: "WhatsApp fallback opened",
+      description: "We couldn't create the booking automatically, so we opened WhatsApp instead.",
+    });
   };
 
   return (
@@ -95,40 +273,69 @@ export function HeroSection() {
               </div>
 
               <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="full-name" className="text-sm font-medium">Full Name</Label>
+                    <Input
+                      id="full-name"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="Your full name"
+                      data-testid="input-booking-name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="mobile-no" className="text-sm font-medium">Mobile No</Label>
+                    <Input
+                      id="mobile-no"
+                      value={mobileNo}
+                      onChange={(e) => setMobileNo(e.target.value)}
+                      placeholder="+966 5X XXX XXXX"
+                      data-testid="input-booking-mobile"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email" className="text-sm font-medium">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    data-testid="input-booking-email"
+                  />
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="pickup" className="text-sm font-medium">Pickup Location</Label>
-                  <Select value={pickupLocation} onValueChange={setPickupLocation}>
-                    <SelectTrigger id="pickup" className="w-full" data-testid="select-pickup">
-                      <MapPin className="w-4 h-4 mr-2 text-muted-foreground" />
-                      <SelectValue placeholder="Select pickup location" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {locations.map((location) => (
-                        <SelectItem key={location} value={location}>
-                          {location}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="relative">
+                    <MapPin className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="pickup"
+                      ref={pickupInputRef}
+                      list="route-locations"
+                      value={pickupLocation}
+                      onChange={(e) => setPickupLocation(e.target.value)}
+                      placeholder="Enter pickup city or place"
+                      className="pl-10"
+                      data-testid="input-pickup"
+                    />
+                  </div>
                 </div>
 
                 {additionalStops.map((stop, index) => (
                   <div key={index} className="space-y-2 relative">
                     <Label className="text-sm font-medium">Stop {index + 1}</Label>
                     <div className="flex gap-2">
-                      <Select value={stop} onValueChange={(value) => handleStopChange(index, value)}>
-                        <SelectTrigger className="w-full" data-testid={`select-stop-${index}`}>
-                          <MapPin className="w-4 h-4 mr-2 text-muted-foreground" />
-                          <SelectValue placeholder="Select stop location" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {locations.map((location) => (
-                            <SelectItem key={location} value={location}>
-                              {location}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Input
+                        list="route-locations"
+                        value={stop}
+                        onChange={(e) => handleStopChange(index, e.target.value)}
+                        placeholder="Enter stop location"
+                        data-testid={`input-stop-${index}`}
+                      />
                       <Button
                         type="button"
                         variant="ghost"
@@ -159,19 +366,19 @@ export function HeroSection() {
 
                 <div className="space-y-2">
                   <Label htmlFor="dropoff" className="text-sm font-medium">Drop-off Location</Label>
-                  <Select value={dropoffLocation} onValueChange={setDropoffLocation}>
-                    <SelectTrigger id="dropoff" className="w-full" data-testid="select-dropoff">
-                      <MapPin className="w-4 h-4 mr-2 text-muted-foreground" />
-                      <SelectValue placeholder="Select drop-off location" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {locations.map((location) => (
-                        <SelectItem key={location} value={location}>
-                          {location}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="relative">
+                    <MapPin className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="dropoff"
+                      ref={dropoffInputRef}
+                      list="route-locations"
+                      value={dropoffLocation}
+                      onChange={(e) => setDropoffLocation(e.target.value)}
+                      placeholder="Enter destination city or place"
+                      className="pl-10"
+                      data-testid="input-dropoff"
+                    />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -239,11 +446,17 @@ export function HeroSection() {
                   onClick={handleGetQuote}
                   className="w-full h-12 text-base font-semibold"
                   size="lg"
+                  disabled={isSubmitting}
                   data-testid="button-get-quote"
                 >
-                  Get Quote via WhatsApp
+                  {isSubmitting ? "Submitting..." : "Book Now"}
                 </Button>
               </div>
+              <datalist id="route-locations">
+                {availableLocations.map((location) => (
+                  <option key={location} value={location} />
+                ))}
+              </datalist>
             </CardContent>
           </Card>
         </div>

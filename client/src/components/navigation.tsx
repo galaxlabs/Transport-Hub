@@ -4,6 +4,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Menu, Phone, Car } from "lucide-react";
 import { companyInfo } from "@/lib/data";
 import { trackEvent } from "@/lib/analytics";
+import { CustomerSignupDialog } from "@/components/customer-signup-dialog";
 
 const navLinks = [
   { href: "#home", label: "Home" },
@@ -96,6 +97,7 @@ export function Navigation() {
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
+            <CustomerSignupDialog />
             <a
               href={`tel:${companyInfo.phone}`}
               className={`flex items-center gap-2 text-sm font-medium ${
@@ -153,6 +155,7 @@ export function Navigation() {
                   ))}
                 </nav>
                 <div className="mt-auto p-4 border-t space-y-3">
+                  <CustomerSignupDialog />
                   <a
                     href={`tel:${companyInfo.phone}`}
                     className="flex items-center gap-3 px-4 py-3 rounded-lg bg-secondary"

@@ -20,11 +20,6 @@ export function ContactSection() {
     message: "",
   });
 
-  /**
-   * Submit the contact form.
-   * 1) Try to create a Booking in Frappe (public API).
-   * 2) If it fails, fallback to opening WhatsApp with prefilled text.
-   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -38,71 +33,11 @@ export function ContactSection() {
         `Message: ${formData.message}`
     );
 
-    // IMPORTANT:
-    // Set VITE_FRAPPE_URL in your env:
-    // - Local:  VITE_FRAPPE_URL="https://your-frappe-domain.com"
-    // - Vercel: add it in Project Settings -> Environment Variables
-    const apiBase = import.meta.env.VITE_FRAPPE_URL as string | undefined;
-
-    // If you are serving Transport-Hub from inside the same Frappe site (/www),
-    // you can also hardcode apiEndpoint = "/api/method/..."
-    const apiEndpoint = apiBase
-      ? `${apiBase}/api/method/tms.transport_management_system.api.booking.create_booking`
-      : "/api/method/tms.transport_management_system.api.booking.create_booking";
-
-    let bookingCreated = false;
-    let bookingName: string | undefined;
-
-    try {
-      const res = await fetch(apiEndpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-
-        // ✅ this avoids CSRF problems if cookies are present
-        // because the request will be treated as guest (no session cookie)
-        credentials: "omit",
-
-        body: JSON.stringify({
-          customer_name: formData.name,
-          phone: formData.phone,
-          email: formData.email,
-          message: formData.message,
-          source: "Website",
-        }),
-      });
-
-      const data = await res.json();
-
-      // Frappe typically returns: { message: { name: "BOOK-0001" } }
-      // If error: may return { exc: "...", _server_messages: "...", message: "..." }
-      if (res.ok && data && !data.exc) {
-        bookingCreated = true;
-        bookingName = data?.message?.name;
-      } else {
-        const errMsg =
-          data?.message ||
-          data?._server_messages ||
-          "Booking API returned an error";
-        throw new Error(typeof errMsg === "string" ? errMsg : "Booking API error");
-      }
-    } catch (err) {
-      // silently fallback to WhatsApp below
-    }
-
-    if (bookingCreated) {
-      toast({
-        title: "Message Sent!",
-        description: bookingName
-          ? `Your booking has been received: ${bookingName}. We'll contact you soon.`
-          : "Your booking has been received. We'll contact you soon.",
-      });
-    } else {
-      window.open(`https://wa.me/${companyInfo.whatsapp}?text=${whatsappMessage}`, "_blank");
-      toast({
-        title: "Message Sent via WhatsApp!",
-        description: "We've opened WhatsApp so you can complete your message.",
-      });
-    }
+    window.open(`https://wa.me/${companyInfo.whatsapp}?text=${whatsappMessage}`, "_blank");
+    toast({
+      title: "Message Sent via WhatsApp!",
+      description: "We've opened WhatsApp so you can complete your message.",
+    });
 
     setFormData({ name: "", email: "", phone: "", message: "" });
     setIsSubmitting(false);
@@ -195,7 +130,7 @@ export function ContactSection() {
                   data-testid="button-contact-submit"
                 >
                   <Send className="w-4 h-4" />
-                  {isSubmitting ? "Sending..." : "Send Message"}
+                  {isSubmitting ? "Opening WhatsApp..." : "Send Message"}
                 </Button>
               </form>
             </CardContent>
