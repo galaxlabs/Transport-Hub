@@ -90,7 +90,6 @@ async function frappeRequest<T>(method: string, payload?: unknown): Promise<T> {
 
   const response = await fetch(makeUrl(method), {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
     credentials: "include",
     body: body.toString() || undefined,
   });

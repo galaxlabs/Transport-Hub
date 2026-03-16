@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Menu, Phone, Car } from "lucide-react";
 import { companyInfo } from "@/lib/data";
 import { trackEvent } from "@/lib/analytics";
-import { CustomerSignupDialog } from "@/components/customer-signup-dialog";
 
 const navLinks = [
   { href: "#home", label: "Home" },
@@ -97,7 +97,9 @@ export function Navigation() {
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
-            <CustomerSignupDialog />
+            <Button asChild variant="outline" className="gap-2 border-white/30 bg-white/90 text-slate-900 hover:bg-white" data-testid="button-signup-open">
+              <Link href="/signup">Sign Up</Link>
+            </Button>
             <a
               href={`tel:${companyInfo.phone}`}
               className={`flex items-center gap-2 text-sm font-medium ${
@@ -155,7 +157,9 @@ export function Navigation() {
                   ))}
                 </nav>
                 <div className="mt-auto p-4 border-t space-y-3">
-                  <CustomerSignupDialog />
+                  <Button asChild className="w-full" data-testid="button-mobile-signup">
+                    <Link href="/signup" onClick={() => setIsOpen(false)}>Sign Up</Link>
+                  </Button>
                   <a
                     href={`tel:${companyInfo.phone}`}
                     className="flex items-center gap-3 px-4 py-3 rounded-lg bg-secondary"
