@@ -10,6 +10,12 @@ export interface PublicRouteOption {
   price: number;
   currency: string;
   pricing_rule?: string;
+  vehicle_type?: string;
+  vehicle_type_ar?: string;
+  vehicle_category?: string;
+  vehicle_image?: string;
+  vehicle_make?: string;
+  vehicle_model?: string;
   label: string;
 }
 
@@ -17,6 +23,21 @@ export interface PublicBookingContext {
   base_company: string;
   routes: PublicRouteOption[];
   locations: string[];
+  fleet: PublicFleetOption[];
+}
+
+export interface PublicFleetOption {
+  name: string;
+  vehicle_type: string;
+  vehicle_type_ar?: string;
+  category?: string;
+  seating_capacity?: number;
+  starting_price: number;
+  currency: string;
+  description: string;
+  image?: string;
+  vehicle_make?: string;
+  vehicle_model?: string;
 }
 
 export interface PublicBookingPayload {
@@ -57,11 +78,21 @@ function makeUrl(method: string) {
 }
 
 async function frappeRequest<T>(method: string, payload?: unknown): Promise<T> {
+  const body = new URLSearchParams();
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    Object.entries(payload as Record<string, unknown>).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === "") {
+        return;
+      }
+      body.append(key, typeof value === "string" ? value : JSON.stringify(value));
+    });
+  }
+
   const response = await fetch(makeUrl(method), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
     credentials: "include",
-    body: payload ? JSON.stringify(payload) : undefined,
+    body: body.toString() || undefined,
   });
   const data = await response.json();
   if (!response.ok || data.exc) {
